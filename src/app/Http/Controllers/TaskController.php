@@ -1,18 +1,26 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Task;
+use App\Services\TaskService;
+use Illuminate\Http\JsonResponse;
 
 class TaskController extends Controller
 {
+    protected TaskService $taskService;
+
     /**
      * Create a new TaskController instance.
+     *
+     * @param TaskService $taskService
      */
-    public function __construct()
+    public function __construct(TaskService $taskService)
     {
         $this->middleware('auth:sanctum');
+        $this->taskService = $taskService;
     }
 
     /**
@@ -23,7 +31,7 @@ class TaskController extends Controller
      */
     public function index(Request $request)
     {
-        return Task::all();
+        return $this->taskService->getAllTasks();
     }
 
     /**
@@ -38,7 +46,7 @@ class TaskController extends Controller
             'title' => 'required|max:255',
         ]);
 
-        $task = Task::create($validated + ['user_id' => auth()->id()]);
+        $task = $this->taskService->createTask($validated);
 
         return response()->json($task, 201);
     }
@@ -47,52 +55,69 @@ class TaskController extends Controller
      * Update the specified task in storage.
      *
      * @param Request $request
-     * @param Task $task
+     * @param int $taskId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, Task $task)
+    public function update(Request $request, int $taskId): JsonResponse
     {
-        if ($task->user_id !== auth()->id()) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        try {
+            $task = $this->taskService->getTaskById($taskId);
+
+            if (!$task) {
+                return response()->json(['error' => 'Task not found.'], 404);
+            }
+
+            if ($task->user_id !== auth()->id()) {
+                return response()->json(['error' => 'Unauthorized'], 403);
+            }
+
+            $updated = $this->taskService->updateTask($task, $request->all());
+
+            if ($updated) {
+                return response()->json($task->fresh(), 200); // Return the updated task object.
+            }
+
+            return response()->json(['error' => 'Failed to update task.'], 500);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
-
-        $task->update($request->all());
-
-        return response()->json($task, 200);
     }
 
     /**
      * Mark the specified task as done.
      *
-     * @param Task $task
+     * @param int $taskId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function markAsDone(Task $task)
+    public function markAsDone(int $taskId): JsonResponse
     {
-        // Check if all sub-tasks are done:
-        if ($task->subTasks()->where('status', 'todo')->exists()) {
-            return response()->json(['error' => 'All sub-tasks must be completed first'], 400);
+        try {
+            $isMarked = $this->taskService->markTaskAsDone($taskId);
+
+            if ($isMarked) {
+                $task = $this->taskService->getTaskById($taskId);
+                return response()->json($task, 200);
+            }
+
+            return response()->json(['error' => 'Unable to mark task as done.'], 500);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
-
-        $task->update(['status' => 'done']);
-
-        return response()->json($task, 200);
     }
 
     /**
      * Remove the specified task from storage.
      *
-     * @param Task $task
+     * @param int $taskId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function destroy(Task $task)
+    public function destroy(int $taskId): JsonResponse
     {
-        if ($task->status === 'done') {
-            return response()->json(['error' => 'Cannot delete completed tasks'], 400);
+        try {
+            $this->taskService->deleteTask($taskId);
+            return response()->json(null, 204);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
-
-        $task->delete();
-
-        return response()->json(null, 204);
     }
 }
