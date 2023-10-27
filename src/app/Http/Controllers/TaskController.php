@@ -27,11 +27,17 @@ class TaskController extends Controller
      * Display a listing of tasks.
      *
      * @param Request $request
-     * @return \Illuminate\Http\Response
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        return $this->taskService->getAllTasks();
+        try {
+            $filters = $request->only(['status', 'priority', 'search', 'sort']);
+            $tasks = $this->taskService->getTasksWithFilters($filters);
+            return response()->json($tasks, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     /**

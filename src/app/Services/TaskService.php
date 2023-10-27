@@ -79,4 +79,9 @@ class TaskService
     {
         return $this->taskRepository->hasIncompleteSubTasks($task);
     }
+
+    public function getTasksWithFilters(array $filters): Collection
+    {
+        return $this->taskRepository->getAllTasksWithFilters($filters);
+    }
 }
